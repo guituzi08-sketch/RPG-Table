@@ -13,6 +13,68 @@ type Props = {
 
 type CellPosition = { x: number; y: number };
 
+function createMiniature(token: Token) {
+  const figure = new Graphics();
+  const outfit = token.color;
+  const leather = "#493529";
+  const skin = "#c39a79";
+  const hair = "#35261f";
+
+  if (token.silhouette === "feminine") {
+    figure.ellipse(0, -10, 7.5, 11).fill(hair);
+    figure
+      .ellipse(-4.5, 10, 3.1, 6)
+      .fill(leather)
+      .ellipse(4.5, 10, 3.1, 6)
+      .fill(leather)
+      .ellipse(-7, -2, 3.2, 6)
+      .fill(outfit)
+      .ellipse(7, -2, 3.2, 6)
+      .fill(outfit)
+      .poly([-4, -8, 4, -8, 6, -3, 5, 2, 10, 11, 0, 16, -10, 11, -5, 2, -6, -3])
+      .fill(outfit)
+      .stroke({ color: "#e2c78d", width: 1.4, alpha: 0.9 })
+      .moveTo(-6, 2)
+      .lineTo(6, 2)
+      .stroke({ color: "#dbbd7f", width: 2, alpha: 0.9 })
+      .ellipse(-8, 4, 2.1, 2.7)
+      .fill(skin)
+      .ellipse(8, 4, 2.1, 2.7)
+      .fill(skin);
+  } else {
+    figure
+      .ellipse(-4, 10, 3.3, 6)
+      .fill(leather)
+      .ellipse(4, 10, 3.3, 6)
+      .fill(leather)
+      .ellipse(-8, -2, 3.5, 6)
+      .fill(outfit)
+      .ellipse(8, -2, 3.5, 6)
+      .fill(outfit)
+      .poly([-7, -9, -3, -12, 3, -12, 7, -9, 6, -3, 5, 5, 3, 10, -3, 10, -5, 5, -6, -3])
+      .fill(outfit)
+      .stroke({ color: "#e2c78d", width: 1.4, alpha: 0.9 })
+      .moveTo(-5, 2)
+      .lineTo(5, 2)
+      .stroke({ color: "#dbbd7f", width: 2, alpha: 0.9 })
+      .ellipse(-9, 4, 2.2, 2.7)
+      .fill(skin)
+      .ellipse(9, 4, 2.2, 2.7)
+      .fill(skin);
+  }
+
+  figure
+    .circle(0, -14, 5.4)
+    .fill(skin)
+    .stroke({ color: "#36271f", width: 1.2 })
+    .ellipse(0, -17.2, 5.1, 2.5)
+    .fill(hair)
+    .moveTo(-2.5, -4)
+    .lineTo(-1, -7)
+    .stroke({ color: "#fff1ca", width: 1.5, alpha: 0.52 });
+  return figure;
+}
+
 export default function Board(props: Props) {
   const host = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
@@ -372,24 +434,11 @@ export default function Board(props: Props) {
             .fill("#75603c")
             .stroke({ color: "#f0d397", width: 2 })
             .circle(0, -4, 16)
-            .fill(token.color)
+            .fill("#4f4938")
             .stroke({ color: "#fff0c5", width: 2, alpha: 0.86 })
             .ellipse(-5, -10, 8, 4)
             .fill({ color: "#fff6d9", alpha: 0.42 });
-          node.addChild(shadow, selection, base);
-          const initials = new Text({
-            text: token.name.slice(0, 2).toUpperCase(),
-            style: {
-              fontFamily: "Georgia",
-              fontSize: 13,
-              fontWeight: "bold",
-              fill: "#1d211b",
-              stroke: { color: "#f1dcae", width: 1 },
-            },
-          });
-          initials.anchor.set(0.5);
-          initials.position.set(0, -3);
-          node.addChild(initials);
+          node.addChild(shadow, selection, base, createMiniature(token));
           const label = new Text({
             text: token.name,
             style: {
@@ -459,6 +508,9 @@ export default function Board(props: Props) {
         if (drag) {
           drag.view.position.set(position.x, position.y);
           drag.view.scale.set(1.08);
+          const shadow = drag.view.children[0];
+          shadow.scale.set(1.28, 1.18);
+          shadow.alpha = 0.94;
         }
       };
       const up = (event: PointerEvent) => {

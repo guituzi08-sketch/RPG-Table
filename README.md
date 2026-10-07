@@ -14,7 +14,7 @@ Implementação inicial: criar/entrar em sala com código, autenticação anôni
 - `src/game/Board.tsx`: desenho PixiJS, câmera e interação com tokens.
 - `src/lib/client.ts`: autenticação e cliente Supabase.
 - `src/lib/useRoom.ts`: assinatura Realtime, recuperação de snapshots e presença.
-- `database/001_initial.sql`: quatro tabelas, RLS, funções de mutação e publicação Realtime.
+- `database/001_initial.sql` e `database/002_character_appearance.sql`: schema, RLS, funções de mutação e aparência persistente das miniaturas.
 - `tests/security.test.js`: testes PostgreSQL de permissões e persistência usando PGlite.
 
 O banco é a fonte de verdade. Ao soltar um token, `move_token` verifica a permissão, salva a posição e o Realtime notifica os participantes. O arraste intermediário é local; a posição final é compartilhada. Na assinatura/reconexão, o cliente carrega novamente o estado salvo. Snapshots são serializados para evitar que respostas antigas sobrescrevam as novas. Em movimentos simultâneos autorizados, prevalece a última gravação.
@@ -30,9 +30,10 @@ Presença usa heartbeat no banco a cada 20 segundos e expira após 65 segundos; 
 3. Nome: `rpg-table`. Gere e guarde a senha do banco; ela **não** entra no frontend.
 4. Escolha a região disponível mais próxima do grupo e clique **Create new project**. Aguarde a criação.
 5. Abra **Authentication → Sign In / Providers** (em algumas versões, **Providers**). Abra **Anonymous Sign-Ins**, ative **Allow anonymous sign-ins** e salve. Não é necessário login Google nem SMTP para este MVP.
-6. Abra **SQL Editor → New query**. Copie TODO o conteúdo de [`database/001_initial.sql`](database/001_initial.sql), cole e clique **Run**. Execute uma vez, em um projeto novo. O script é transacional e cria tabelas, regras e a publicação Realtime. Não execute em um banco existente sem revisar conflitos.
-7. Em **Project Settings → API Keys**, copie a chave **Publishable** (`sb_publishable_...`). Se o projeto só oferecer chaves antigas, a chave pública `anon` também funciona. **Nunca use `service_role`, `sb_secret_...` ou senha do banco.**
-8. No diálogo **Connect** ou em **Project Settings → Data API**, copie **Project URL**, no formato `https://....supabase.co`.
+6. Abra **SQL Editor → New query**. Copie TODO o conteúdo de [`database/001_initial.sql`](database/001_initial.sql), cole e clique **Run**. Execute uma vez em um projeto novo. Não execute em um banco existente sem revisar conflitos.
+7. No SQL Editor, execute também [`database/002_character_appearance.sql`](database/002_character_appearance.sql), depois da migration inicial. Ela adiciona a silhueta persistente, mantém tokens antigos como `masculine` por padrão e conserva chamadas antigas do RPC `add_token`. Em um projeto já configurado, basta aplicar esta segunda migration.
+8. Em **Project Settings → API Keys**, copie a chave **Publishable** (`sb_publishable_...`). Se o projeto só oferecer chaves antigas, a chave pública `anon` também funciona. **Nunca use `service_role`, `sb_secret_...` ou senha do banco.**
+9. No diálogo **Connect** ou em **Project Settings → Data API**, copie **Project URL**, no formato `https://....supabase.co`.
 
 As duas informações utilizadas pela aplicação são públicas por definição. A segurança depende do SQL e da autenticação, não de esconder essas duas variáveis. Não desative RLS.
 
@@ -75,7 +76,7 @@ Use dois computadores ou dois perfis distintos do navegador. Duas abas do mesmo 
 1. Rafael abre o site, informa o nome e clica **Criar uma nova mesa**.
 2. Aguarda **Conectado**, copia o código de oito caracteres e envia ao Pestana.
 3. Pestana abre o mesmo site, informa outro nome, cola o código e clica **Entrar na aventura**.
-4. Ambos aparecem na lista. Cada um cria seu token, com nome e cor próprios.
+4. Ambos aparecem na lista. Cada um cria sua miniatura com nome, silhueta e cor de roupa próprios.
 5. Rafael arrasta o token e solta em outra casa. Pestana deve ver a posição final atualizar sem recarregar. Repita na direção oposta.
 6. Pestana tenta mover um token do Rafael: não deve conseguir. Rafael, como mestre, pode mover ambos.
 7. Pestana define modificador `5` e clica `d20`. Os dois veem o MESMO dado, modificador e total.

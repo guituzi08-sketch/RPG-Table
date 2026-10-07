@@ -1,8 +1,22 @@
 import { lazy, Suspense, useState } from "react";
 import { db, identify } from "./lib/client";
 import { useRoom } from "./lib/useRoom";
-import type { Room } from "./lib/types";
+import type { Room, TokenSilhouette } from "./lib/types";
 const Board = lazy(() => import("./game/Board"));
+const outfitPalette = [
+  { name: "Vermelho", color: "#934640" },
+  { name: "Azul", color: "#4e738a" },
+  { name: "Verde", color: "#54774f" },
+  { name: "Roxo", color: "#765477" },
+  { name: "Preto", color: "#292b2a" },
+  { name: "Branco", color: "#e1d6b8" },
+  { name: "Dourado", color: "#c8a45e" },
+  { name: "Marrom", color: "#76533a" },
+] as const;
+const silhouettes: { value: TokenSilhouette; name: string }[] = [
+  { value: "masculine", name: "Homem" },
+  { value: "feminine", name: "Mulher" },
+];
 
 export default function App() {
   const [name, setName] = useState(localStorage.getItem("rpg-name") || ""),
@@ -13,7 +27,8 @@ export default function App() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [tokenName, setTokenName] = useState(""),
-    [color, setColor] = useState("#ddb876"),
+    [color, setColor] = useState("#c8a45e"),
+    [silhouette, setSilhouette] = useState<TokenSilhouette>("masculine"),
     [modifier, setModifier] = useState(0);
   const [rollingSides, setRollingSides] = useState<number | null>(null);
   const live = useRoom(room);
@@ -242,8 +257,18 @@ export default function App() {
               </div>
               <ul className="members">
                 {live.members.map((m) => (
-                  <li key={m.user_id}>
-                    <span className="avatar">{m.name.slice(0, 1)}</span>
+                  <li
+                    key={m.user_id}
+                    className={m.user_id === userId ? "is-current-player" : undefined}
+                  >
+                    <span
+                      className="avatar"
+                      style={{
+                        borderColor: live.tokens.find((token) => token.owner_id === m.user_id)?.color,
+                      }}
+                    >
+                      {m.name.slice(0, 1)}
+                    </span>
                     <span>
                       {m.name}
                       {m.user_id === userId ? " (você)" : ""}
@@ -273,6 +298,7 @@ export default function App() {
                       p_room: room.id,
                       p_name: tokenName.trim(),
                       p_color: color,
+                      p_silhouette: silhouette,
                     });
                     if (error) throw error;
                     setTokenName("");
@@ -280,23 +306,69 @@ export default function App() {
                 }}
               >
                 <label>
-                  Nome do token
+                  Nome do personagem
                   <input
                     maxLength={32}
                     required
                     value={tokenName}
                     onChange={(e) => setTokenName(e.target.value)}
-                    placeholder="Ex.: Rafael"
+                    placeholder="Ex.: Aragorn"
                   />
                 </label>
-                <label className="color-row">
-                  Cor da miniatura
-                  <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                  />
-                </label>
+                <fieldset className="character-fieldset">
+                  <legend>Aparência</legend>
+                  <div className="silhouette-options">
+                    {silhouettes.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`silhouette-option${silhouette === option.value ? " is-selected" : ""}`}
+                        aria-pressed={silhouette === option.value}
+                        onClick={() => setSilhouette(option.value)}
+                      >
+                        <span
+                          className={`silhouette-icon silhouette-icon-${option.value}`}
+                          aria-hidden="true"
+                        >
+                          <i className="silhouette-head" />
+                          <i className="silhouette-body" />
+                          <i className="silhouette-arm silhouette-arm-left" />
+                          <i className="silhouette-arm silhouette-arm-right" />
+                          <i className="silhouette-leg silhouette-leg-left" />
+                          <i className="silhouette-leg silhouette-leg-right" />
+                        </span>
+                        {option.name}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <fieldset className="character-fieldset outfit-fieldset">
+                  <legend>Cor da roupa</legend>
+                  <div className="outfit-palette" aria-label="Cores disponíveis">
+                    {outfitPalette.map((option) => (
+                      <button
+                        key={option.name}
+                        type="button"
+                        className={`outfit-swatch${color === option.color ? " is-selected" : ""}`}
+                        aria-label={option.name}
+                        aria-pressed={color === option.color}
+                        title={option.name}
+                        onClick={() => setColor(option.color)}
+                      >
+                        <span style={{ backgroundColor: option.color }} />
+                      </button>
+                    ))}
+                  </div>
+                  <label className="color-row">
+                    Personalizar cor
+                    <input
+                      type="color"
+                      aria-label="Personalizar cor da roupa"
+                      value={color}
+                      onChange={(e) => setColor(e.target.value)}
+                    />
+                  </label>
+                </fieldset>
                 <button
                   className="secondary"
                   disabled={busy || !live.connected}
@@ -365,11 +437,27 @@ export default function App() {
                   />
                 </label>
                 {live.rolls[0] && (
-                  <div className="last-roll" aria-live="polite">
-                    <span>ÚLTIMO RESULTADO</span>
+                  <div
+                    className={`last-roll${
+                      live.rolls[0].sides === 20 && live.rolls[0].result === 20
+                        ? " is-critical"
+                        : live.rolls[0].sides === 20 && live.rolls[0].result === 1
+                          ? " is-fumble"
+                          : ""
+                    }`}
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    <span>
+                      {live.rolls[0].sides === 20 && live.rolls[0].result === 20
+                        ? "CRÍTICO · D20"
+                        : live.rolls[0].sides === 20 && live.rolls[0].result === 1
+                          ? "FALHA CRÍTICA · D20"
+                          : "ÚLTIMO RESULTADO"}
+                    </span>
                     <strong>{live.rolls[0].result + live.rolls[0].modifier}</strong>
                     <small>
-                      {live.rolls[0].player_name} · d{live.rolls[0].sides}
+                      {live.rolls[0].player_name} · d{live.rolls[0].sides} · face {live.rolls[0].result}
                       {live.rolls[0].modifier === 0
                         ? ""
                         : ` ${live.rolls[0].modifier > 0 ? "+" : "−"} ${Math.abs(live.rolls[0].modifier)}`}
@@ -379,8 +467,8 @@ export default function App() {
               </section>
             </section>
             <aside className="log">
-              <p className="eyebrow">DIÁRIO DE ROLAGENS</p>
-              <h2>O destino falou.</h2>
+              <p className="eyebrow">DIÁRIO DA MESA</p>
+              <h2>Livro de rolagens</h2>
               {live.rolls.length === 0 ? (
                 <p className="small">
                   As rolagens de todos aparecem aqui. Que os dados estejam a seu

@@ -10,9 +10,11 @@ export type Token = {
   owner_id: string;
   name: string;
   color: string;
+  silhouette: TokenSilhouette;
   x: number;
   y: number;
 };
+export type TokenSilhouette = "masculine" | "feminine";
 export type Member = { user_id: string; name: string; last_seen: string };
 export type Roll = {
   id: string;

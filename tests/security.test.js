@@ -30,6 +30,12 @@ beforeAll(async () => {
       "",
     ),
   );
+  await sql.exec(
+    readFileSync(
+      new URL("../database/002_character_appearance.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   await as(gm);
   room = await one("select * from public.create_room($1,$2)", [
     "Valdora",
@@ -42,10 +48,11 @@ beforeAll(async () => {
   ]);
   await as(player);
   await one("select * from public.join_room($1,$2)", [room.code, "Rafael"]);
-  token = await one("select * from public.add_token($1,$2,$3)", [
+  token = await one("select * from public.add_token($1,$2,$3,$4)", [
     room.id,
     "Rafael",
     "#ddb876",
+    "feminine",
   ]);
   await as(outsider);
   other = await one("select * from public.create_room($1,$2)", [
@@ -57,6 +64,19 @@ afterAll(async () => {
   await sql.close();
 });
 describe("Room security and persisted gameplay", () => {
+  it("persists the selected silhouette and defaults older RPC calls", async () => {
+    expect(token.silhouette).toBe("feminine");
+    expect(gmToken.silhouette).toBe("masculine");
+    await as(player);
+    await expect(
+      one("select * from public.add_token($1,$2,$3,$4)", [
+        room.id,
+        "Inválido",
+        "#ffffff",
+        "other",
+      ]),
+    ).rejects.toThrow();
+  });
   it("hides all rows in another room", async () => {
     await as(outsider);
     for (const table of ["tokens", "room_members", "rolls"])
