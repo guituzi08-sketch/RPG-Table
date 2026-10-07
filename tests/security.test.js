@@ -19,6 +19,12 @@ beforeAll(async () => {
  create table auth.users(id uuid primary key);
  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
  grant usage on schema auth to authenticated,anon;
+ create schema storage;
+ create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+ create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text not null,name text not null,owner_id uuid,unique(bucket_id,name));
+ create function storage.foldername(object_name text) returns text[] language sql immutable as $$ select (string_to_array(object_name,'/'))[1:1] $$;
+ grant usage on schema storage to authenticated,anon;
+ grant select,insert,update,delete on storage.objects to authenticated;
  insert into auth.users values('${gm}'),('${player}'),('${outsider}');`);
   // PGlite validates the actual PostgreSQL schema/RPC/RLS logic, but cannot host Supabase Realtime.
   await sql.exec(
@@ -34,6 +40,15 @@ beforeAll(async () => {
     readFileSync(
       new URL("../database/002_character_appearance.sql", import.meta.url),
       "utf8",
+    ),
+  );
+  await sql.exec(
+    readFileSync(
+      new URL("../database/003_custom_maps.sql", import.meta.url),
+      "utf8",
+    ).replace(
+      /do \$\$\s*begin\s*if not exists\s*\(\s*select 1 from pg_publication_tables[\s\S]*?\$\$;/,
+      "",
     ),
   );
   await as(gm);
@@ -64,6 +79,78 @@ afterAll(async () => {
   await sql.close();
 });
 describe("Room security and persisted gameplay", () => {
+  it("migrates old token coordinates to normalized map positions", async () => {
+    expect(gmToken.map_x).toBeCloseTo(4 / 31);
+    expect(gmToken.map_y).toBeCloseTo(4 / 23);
+  });
+  it("persists maps for the room, shares them with members, and keeps tokens on removal", async () => {
+    await as(gm);
+    await one(
+      "insert into storage.objects(bucket_id,name,owner_id) values($1,$2,$3)",
+      ["maps", `${room.id}/test-map.webp`, gm],
+    );
+    const mapped = await one(
+      "select * from public.set_room_map($1,$2,$3,$4,$5)",
+      [room.id, `${room.id}/test-map.webp`, "Dungeon.webp", 1600, 900],
+    );
+    expect(mapped.map_path).toBe(`${room.id}/test-map.webp`);
+    expect(mapped.map_width).toBe(1600);
+    await as(player);
+    expect(
+      await one("select map_name from public.rooms where id=$1", [room.id]),
+    ).toEqual({ map_name: "Dungeon.webp" });
+    expect(
+      (await sql.query("select * from storage.objects where bucket_id='maps'")).rows,
+    ).toHaveLength(1);
+    await as(outsider);
+    expect(
+      (await sql.query("select * from storage.objects where bucket_id='maps'")).rows,
+    ).toHaveLength(0);
+    await as(gm);
+    const configured = await one(
+      "select * from public.set_room_grid($1,$2,$3,$4)",
+      [room.id, true, 80, 0.4],
+    );
+    expect(configured.grid_enabled).toBe(true);
+    expect(configured.grid_size).toBe(80);
+    const cleared = await one("select * from public.clear_room_map($1)", [room.id]);
+    expect(cleared.map_path).toBeNull();
+    expect(cleared.grid_enabled).toBe(false);
+    expect(
+      (await sql.query("select * from public.tokens where room_id=$1", [room.id])).rows,
+    ).toHaveLength(2);
+  });
+  it("restricts map uploads and map mutations to the room owner", async () => {
+    await as(player);
+    await expect(
+      sql.query(
+        "insert into storage.objects(bucket_id,name,owner_id) values('maps',$1,$2)",
+        [`${room.id}/not-master.png`, player],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      one("select * from public.clear_room_map($1)", [room.id]),
+    ).rejects.toThrow();
+    await as(outsider);
+    await expect(
+      sql.query(
+        "insert into storage.objects(bucket_id,name,owner_id) values('maps',$1,$2)",
+        [`${room.id}/outsider.png`, outsider],
+      ),
+    ).rejects.toThrow();
+  });
+  it("moves a token using normalized map coordinates", async () => {
+    await as(player);
+    const moved = await one(
+      "select * from public.move_token_on_map($1,$2,$3)",
+      [token.id, 0.45, 0.62],
+    );
+    expect(moved.map_x).toBeCloseTo(0.45);
+    expect(moved.map_y).toBeCloseTo(0.62);
+    await expect(
+      one("select * from public.move_token_on_map($1,$2,$3)", [token.id, 1.1, 0.5]),
+    ).rejects.toThrow();
+  });
   it("persists the selected silhouette and defaults older RPC calls", async () => {
     expect(token.silhouette).toBe("feminine");
     expect(gmToken.silhouette).toBe("masculine");

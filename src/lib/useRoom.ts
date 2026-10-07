@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { db } from "./client";
-import type { Member, Roll, Room, Token } from "./types";
+import type { Member, Roll, Room, RoomMap, Token } from "./types";
 
 export function useRoom(room: Room | null) {
   const [tokens, setTokens] = useState<Token[]>([]),
     [members, setMembers] = useState<Member[]>([]),
-    [rolls, setRolls] = useState<Roll[]>([]);
+    [rolls, setRolls] = useState<Roll[]>([]),
+    [map, setMap] = useState<RoomMap | null>(null);
   const [connected, setConnected] = useState(false),
     [error, setError] = useState(""),
     [clock, setClock] = useState(Date.now());
@@ -13,6 +14,7 @@ export function useRoom(room: Room | null) {
     setTokens([]);
     setMembers([]);
     setRolls([]);
+    setMap(null);
     setConnected(false);
     setError("");
     if (!room || !db) return;
@@ -20,6 +22,8 @@ export function useRoom(room: Room | null) {
     let active = true,
       loading = false,
       again = false;
+    let cachedMapPath = "";
+    let cachedMapUrl = "";
     // Serialize snapshots. A change arriving during a fetch schedules another fetch.
     const refresh = async () => {
       if (loading) {
@@ -41,6 +45,11 @@ export function useRoom(room: Room | null) {
             .eq("room_id", room.id)
             .order("created_at", { ascending: false })
             .limit(60),
+          client
+            .from("rooms")
+            .select("map_path,map_name,map_width,map_height,grid_enabled,grid_size,grid_opacity")
+            .eq("id", room.id)
+            .maybeSingle(),
         ]);
         if (!active) break;
         const problem = responses.find((r) => r.error)?.error;
@@ -48,9 +57,52 @@ export function useRoom(room: Room | null) {
           setError(problem.message);
           setConnected(false);
         } else {
+          const roomMap = responses[3].data as {
+            map_path: string | null;
+            map_name: string | null;
+            map_width: number | null;
+            map_height: number | null;
+            grid_enabled: boolean;
+            grid_size: number;
+            grid_opacity: number;
+          } | null;
+          let nextMap: RoomMap | null = null;
+          if (
+            roomMap?.map_path &&
+            roomMap.map_name &&
+            roomMap.map_width &&
+            roomMap.map_height
+          ) {
+            if (cachedMapPath !== roomMap.map_path || !cachedMapUrl) {
+              const signed = await client.storage
+                .from("maps")
+                .createSignedUrl(roomMap.map_path, 3600);
+              if (signed.error) {
+                setError(signed.error.message);
+                setConnected(false);
+                break;
+              }
+              cachedMapPath = roomMap.map_path;
+              cachedMapUrl = signed.data.signedUrl;
+            }
+            nextMap = {
+              path: roomMap.map_path,
+              name: roomMap.map_name,
+              width: roomMap.map_width,
+              height: roomMap.map_height,
+              gridEnabled: roomMap.grid_enabled,
+              gridSize: roomMap.grid_size,
+              gridOpacity: roomMap.grid_opacity,
+              imageUrl: cachedMapUrl,
+            };
+          } else {
+            cachedMapPath = "";
+            cachedMapUrl = "";
+          }
           setTokens(responses[0].data as Token[]);
           setMembers(responses[1].data as Member[]);
           setRolls(responses[2].data as Roll[]);
+          setMap(nextMap);
           setError("");
         }
       } while (again && active);
@@ -61,14 +113,14 @@ export function useRoom(room: Room | null) {
       if (active && error) setError(error.message);
     };
     const channel = client.channel(`room:${room.id}`);
-    for (const table of ["tokens", "rolls", "room_members"])
+    for (const table of ["tokens", "rolls", "room_members", "rooms"])
       channel.on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table,
-          filter: `room_id=eq.${room.id}`,
+          filter: `${table === "rooms" ? "id" : "room_id"}=eq.${room.id}`,
         },
         () => {
           void refresh();
@@ -103,6 +155,7 @@ export function useRoom(room: Room | null) {
     tokens,
     members: members.filter((m) => clock - Date.parse(m.last_seen) < 65000),
     rolls,
+    map,
     connected,
     error,
   };

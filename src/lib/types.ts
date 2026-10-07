@@ -4,6 +4,16 @@ export type Room = {
   title: string;
   owner_id: string;
 };
+export type RoomMap = {
+  path: string;
+  name: string;
+  width: number;
+  height: number;
+  gridEnabled: boolean;
+  gridSize: number;
+  gridOpacity: number;
+  imageUrl: string;
+};
 export type Token = {
   id: string;
   room_id: string;
@@ -11,6 +21,8 @@ export type Token = {
   name: string;
   color: string;
   silhouette: TokenSilhouette;
+  map_x: number;
+  map_y: number;
   x: number;
   y: number;
 };

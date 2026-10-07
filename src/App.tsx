@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { db, identify } from "./lib/client";
 import { useRoom } from "./lib/useRoom";
 import type { Room, TokenSilhouette } from "./lib/types";
+import MapManager from "./game/MapManager";
 const Board = lazy(() => import("./game/Board"));
 const outfitPalette = [
   { name: "Vermelho", color: "#934640" },
@@ -70,21 +71,23 @@ export default function App() {
       setCode(joined.code);
       setRoom(joined);
     });
-  const move = async (id: string, x: number, y: number) => {
+  const move = async (id: string, x: number, y: number): Promise<boolean> => {
     // Do not retry a move automatically: a later player move may already be committed.
     try {
-      const { error } = await db!.rpc("move_token", {
+      const { error } = await db!.rpc("move_token_on_map", {
         p_token: id,
         p_x: x,
         p_y: y,
       });
       if (error) throw error;
       setError("");
+      return true;
     } catch (e) {
       setError(
         (e as { message: string }).message ||
           "Movimento não salvo. Tente novamente.",
       );
+      return false;
     }
   };
   const roll = (sides: number) => {
@@ -382,19 +385,26 @@ export default function App() {
               </p>
             </aside>
             <section className="map-column">
-              <Suspense
-                fallback={
-                  <div className="board-shell">Preparando o tabuleiro…</div>
-                }
-              >
-                <Board
-                  tokens={live.tokens}
-                  userId={userId}
-                  ownerId={room.owner_id}
+              <div className="board-stage">
+                <Suspense fallback={<div className="board-shell">Preparando o tabuleiro…</div>}>
+                  <Board
+                    tokens={live.tokens}
+                    map={live.map}
+                    gridEnabled={live.map?.gridEnabled ?? false}
+                    gridSize={live.map?.gridSize ?? 64}
+                    userId={userId}
+                    ownerId={room.owner_id}
+                    disabled={!live.connected}
+                    onMove={move}
+                  />
+                </Suspense>
+                <MapManager
+                  roomId={room.id}
+                  map={live.map}
+                  canManage={room.owner_id === userId}
                   disabled={!live.connected}
-                  onMove={move}
                 />
-              </Suspense>
+              </div>
               <section className="dice-bar" aria-label="Dados da mesa">
                 <div className="dice-heading">
                   <p className="eyebrow">ROLE O DESTINO</p>

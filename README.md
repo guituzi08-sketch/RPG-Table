@@ -14,7 +14,7 @@ Implementação inicial: criar/entrar em sala com código, autenticação anôni
 - `src/game/Board.tsx`: desenho PixiJS, câmera e interação com tokens.
 - `src/lib/client.ts`: autenticação e cliente Supabase.
 - `src/lib/useRoom.ts`: assinatura Realtime, recuperação de snapshots e presença.
-- `database/001_initial.sql` e `database/002_character_appearance.sql`: schema, RLS, funções de mutação e aparência persistente das miniaturas.
+- `database/001_initial.sql`, `database/002_character_appearance.sql` e `database/003_custom_maps.sql`: schema, RLS, Storage privado, mapas e aparência persistente das miniaturas.
 - `tests/security.test.js`: testes PostgreSQL de permissões e persistência usando PGlite.
 
 O banco é a fonte de verdade. Ao soltar um token, `move_token` verifica a permissão, salva a posição e o Realtime notifica os participantes. O arraste intermediário é local; a posição final é compartilhada. Na assinatura/reconexão, o cliente carrega novamente o estado salvo. Snapshots são serializados para evitar que respostas antigas sobrescrevam as novas. Em movimentos simultâneos autorizados, prevalece a última gravação.
@@ -31,7 +31,8 @@ Presença usa heartbeat no banco a cada 20 segundos e expira após 65 segundos; 
 4. Escolha a região disponível mais próxima do grupo e clique **Create new project**. Aguarde a criação.
 5. Abra **Authentication → Sign In / Providers** (em algumas versões, **Providers**). Abra **Anonymous Sign-Ins**, ative **Allow anonymous sign-ins** e salve. Não é necessário login Google nem SMTP para este MVP.
 6. Abra **SQL Editor → New query**. Copie TODO o conteúdo de [`database/001_initial.sql`](database/001_initial.sql), cole e clique **Run**. Execute uma vez em um projeto novo. Não execute em um banco existente sem revisar conflitos.
-7. No SQL Editor, execute também [`database/002_character_appearance.sql`](database/002_character_appearance.sql), depois da migration inicial. Ela adiciona a silhueta persistente, mantém tokens antigos como `masculine` por padrão e conserva chamadas antigas do RPC `add_token`. Em um projeto já configurado, basta aplicar esta segunda migration.
+7. No SQL Editor, execute [`database/002_character_appearance.sql`](database/002_character_appearance.sql) e [`database/003_custom_maps.sql`](database/003_custom_maps.sql), nessa ordem. A segunda mantém tokens e salas antigas, cria o bucket privado `maps`, configura políticas por sala/mestre e ativa atualizações Realtime de `rooms`. Em projeto já configurado, execute apenas as migrations ainda não aplicadas; nunca faça reset do banco.
+Os mapas aceitos são PNG, JPG/JPEG e WEBP, até 20 MB, 4096 px por lado e 16,7 MP. O navegador valida assinatura e decodifica a imagem antes do upload; Storage também limita MIME e tamanho.
 8. Em **Project Settings → API Keys**, copie a chave **Publishable** (`sb_publishable_...`). Se o projeto só oferecer chaves antigas, a chave pública `anon` também funciona. **Nunca use `service_role`, `sb_secret_...` ou senha do banco.**
 9. No diálogo **Connect** ou em **Project Settings → Data API**, copie **Project URL**, no formato `https://....supabase.co`.
 
@@ -77,12 +78,14 @@ Use dois computadores ou dois perfis distintos do navegador. Duas abas do mesmo 
 2. Aguarda **Conectado**, copia o código de oito caracteres e envia ao Pestana.
 3. Pestana abre o mesmo site, informa outro nome, cola o código e clica **Entrar na aventura**.
 4. Ambos aparecem na lista. Cada um cria sua miniatura com nome, silhueta e cor de roupa próprios.
-5. Rafael arrasta o token e solta em outra casa. Pestana deve ver a posição final atualizar sem recarregar. Repita na direção oposta.
-6. Pestana tenta mover um token do Rafael: não deve conseguir. Rafael, como mestre, pode mover ambos.
-7. Pestana define modificador `5` e clica `d20`. Os dois veem o MESMO dado, modificador e total.
-8. Recarregue o navegador, entre novamente pelo código e confira a persistência de posições e rolagens.
-9. Desconecte a rede de um navegador, reconecte e confira se o estado é recuperado. Não considere alterações offline como salvas.
-10. Um terceiro perfil cria outra sala: não deve receber tokens, participantes nem rolagens da primeira.
+5. O mestre envia um mapa PNG, JPG ou WEBP de até 20 MB, confirma a prévia e pode ativar/ajustar a grade. Pestana deve ver o cenário e a grade sem recarregar.
+6. Rafael arrasta o token sobre o mapa. Pestana deve ver a posição final atualizar sem recarregar. Repita na direção oposta e teste também com grade ativada.
+7. Pestana tenta mover um token do Rafael: não deve conseguir. Rafael, como mestre, pode mover ambos.
+8. Troque e depois remova o mapa: tokens e posições devem continuar. Ambos devem ver cada mudança em tempo real.
+9. Pestana define modificador `5` e clica `d20`. Os dois veem o MESMO dado, modificador e total.
+10. Recarregue o navegador, entre novamente pelo código e confira a persistência de mapa, posições e rolagens.
+11. Desconecte a rede de um navegador, reconecte e confira se o estado é recuperado. Não considere alterações offline como salvas.
+12. Um terceiro perfil cria outra sala: não deve receber mapa, tokens, participantes nem rolagens da primeira.
 
 Somente após esse teste a conexão multiplayer está validada. Zoom com roda do mouse, câmera arrastando o fundo, centralização pelo botão. Rolagens exibem as 60 entradas mais recentes, preservando as anteriores no banco.
 
@@ -93,7 +96,7 @@ npm test
 npm run build
 ```
 
-PGlite executa o SQL real e verifica isolamento entre salas, bloqueio de escrita direta, permissões de tokens, limites do grid e rolagens. Ele simula `auth.uid()` e os papéis do Supabase; não emula Auth HTTP, WebSocket, replicação ou restrições específicas do serviço. O teste real acima continua obrigatório.
+PGlite executa o SQL real e verifica isolamento entre salas, políticas do Storage, permissões de tokens, coordenadas relativas, mapas, grid e rolagens. Ele simula `auth.uid()` e as tabelas de Storage; não emula Auth HTTP, WebSocket, imagens assinadas ou replicação real. O teste com dois navegadores continua obrigatório.
 
 ## Se algo falhar
 
