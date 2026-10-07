@@ -15,6 +15,7 @@ export default function App() {
   const [tokenName, setTokenName] = useState(""),
     [color, setColor] = useState("#ddb876"),
     [modifier, setModifier] = useState(0);
+  const [rollingSides, setRollingSides] = useState<number | null>(null);
   const live = useRoom(room);
   async function perform(action: () => Promise<void>) {
     setBusy(true);
@@ -71,15 +72,21 @@ export default function App() {
       );
     }
   };
-  const roll = (sides: number) =>
-    perform(async () => {
+  const roll = (sides: number) => {
+    setRollingSides(sides);
+    void perform(async () => {
       const { error } = await db!.rpc("roll_die", {
         p_room: room!.id,
         p_sides: sides,
         p_modifier: modifier,
       });
       if (error) throw error;
+    }).finally(() => {
+      window.setTimeout(() => {
+        setRollingSides((current) => (current === sides ? null : current));
+      }, 850);
     });
+  };
   return (
     <div className="app">
       <header>
@@ -223,7 +230,13 @@ export default function App() {
           </div>
           <div className="table-layout">
             <aside>
-              <p className="eyebrow">AO REDOR DA MESA</p>
+              <div className="panel-heading">
+                <span className="panel-symbol" aria-hidden="true">♟</span>
+                <div>
+                  <p className="eyebrow">AO REDOR DA MESA</p>
+                  <small>{live.members.length} na mesa</small>
+                </div>
+              </div>
               <div className={live.connected ? "status" : "status waiting"}>
                 {live.connected ? "● Conectado" : "○ Conectando…"}
               </div>
@@ -245,7 +258,13 @@ export default function App() {
                 Presença atualizada a cada 20 s; a saída pode levar até 65 s.
               </p>
               <hr />
-              <p className="eyebrow">SEU PERSONAGEM</p>
+              <div className="panel-heading">
+                <span className="panel-symbol" aria-hidden="true">◉</span>
+                <div>
+                  <p className="eyebrow">SEU PERSONAGEM</p>
+                  <small>Miniatura da mesa</small>
+                </div>
+              </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -304,21 +323,28 @@ export default function App() {
                   onMove={move}
                 />
               </Suspense>
-              <div className="dice-bar">
-                <span>ROLE O DESTINO</span>
+              <section className="dice-bar" aria-label="Dados da mesa">
+                <div className="dice-heading">
+                  <p className="eyebrow">ROLE O DESTINO</p>
+                  <h2>Dados da mesa</h2>
+                </div>
                 <div className="dice-buttons">
                   {[4, 6, 8, 10, 12, 20, 100].map((d) => (
                     <button
                       key={d}
+                      className={`die-button${rollingSides === d ? " is-rolling" : ""}`}
                       disabled={busy || !live.connected}
                       onClick={() => void roll(d)}
+                      aria-label={`Rolar d${d}`}
+                      title={`Rolar d${d}`}
                     >
-                      d{d}
+                      <span className={`die-shape die-${d}`} aria-hidden="true" />
+                      <span className="die-caption">d{d}</span>
                     </button>
                   ))}
                 </div>
-                <label>
-                  Mod.
+                <label className="modifier-control">
+                  <span>Modificador</span>
                   <input
                     aria-label="Modificador da rolagem"
                     type="number"
@@ -338,7 +364,19 @@ export default function App() {
                     }
                   />
                 </label>
-              </div>
+                {live.rolls[0] && (
+                  <div className="last-roll" aria-live="polite">
+                    <span>ÚLTIMO RESULTADO</span>
+                    <strong>{live.rolls[0].result + live.rolls[0].modifier}</strong>
+                    <small>
+                      {live.rolls[0].player_name} · d{live.rolls[0].sides}
+                      {live.rolls[0].modifier === 0
+                        ? ""
+                        : ` ${live.rolls[0].modifier > 0 ? "+" : "−"} ${Math.abs(live.rolls[0].modifier)}`}
+                    </small>
+                  </div>
+                )}
+              </section>
             </section>
             <aside className="log">
               <p className="eyebrow">DIÁRIO DE ROLAGENS</p>
