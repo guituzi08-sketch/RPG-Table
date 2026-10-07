@@ -4,6 +4,7 @@ import { useRoom } from "./lib/useRoom";
 import type { Room, TokenSilhouette } from "./lib/types";
 import MapManager from "./game/MapManager";
 const Board = lazy(() => import("./game/Board"));
+const MiniaturePreview = lazy(() => import("./game/MiniaturePreview"));
 const outfitPalette = [
   { name: "Vermelho", color: "#934640" },
   { name: "Azul", color: "#4e738a" },
@@ -291,6 +292,20 @@ export default function App() {
                 <div>
                   <p className="eyebrow">SEU PERSONAGEM</p>
                   <small>Miniatura da mesa</small>
+                </div>
+              </div>
+              <div className="character-preview-card">
+                <Suspense fallback={<div className="miniature-preview-canvas" aria-hidden="true" />}>
+                  <MiniaturePreview
+                    name={tokenName.trim() || "Aventureiro"}
+                    color={color}
+                    silhouette={silhouette}
+                  />
+                </Suspense>
+                <div>
+                  <span>PRÉVIA DA PEÇA</span>
+                  <strong>{tokenName.trim() || "Aventureiro"}</strong>
+                  <small>{silhouette === "masculine" ? "Homem" : "Mulher"} · acabamento pintado</small>
                 </div>
               </div>
               <form

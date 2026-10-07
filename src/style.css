@@ -496,6 +496,61 @@ h2 {
   justify-content: space-between;
 }
 
+.character-preview-card {
+  display: flex;
+  min-height: 114px;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 15px;
+  overflow: hidden;
+  border: 1px solid #5a513d;
+  border-radius: 3px;
+  background:
+    radial-gradient(ellipse at 36% 48%, #61705250, transparent 63%),
+    linear-gradient(145deg, #1b241d, #252b22);
+  box-shadow: inset 0 1px #ffffff0a, 0 5px 12px #080c0980;
+}
+
+.miniature-preview-canvas {
+  display: grid;
+  width: 120px;
+  height: 104px;
+  flex: 0 0 120px;
+  place-items: center;
+}
+
+.miniature-preview-canvas canvas {
+  display: block;
+  width: 120px;
+  height: 104px;
+}
+
+.character-preview-card > div:last-child {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 5px;
+  padding: 8px 8px 8px 0;
+}
+
+.character-preview-card > div:last-child span {
+  color: #b7a374;
+  font-size: 7px;
+  letter-spacing: 1px;
+}
+
+.character-preview-card > div:last-child strong {
+  overflow: hidden;
+  color: #eee1c0;
+  font: 12px var(--serif);
+  text-overflow: ellipsis;
+}
+
+.character-preview-card > div:last-child small {
+  color: #a7a591;
+  font-size: 8px;
+}
+
 .character-fieldset {
   min-width: 0;
   margin: 17px 0;

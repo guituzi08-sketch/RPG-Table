@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, Assets, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { RoomMap, Token } from "../lib/types";
 import { mapPosition } from "./grid";
+import { createMiniature } from "./miniature";
 
 type Props = {
   tokens: Token[];
@@ -15,68 +16,12 @@ type Props = {
 };
 
 type Point = { x: number; y: number };
-
-function createMiniature(token: Token) {
-  const figure = new Graphics();
-  const outfit = token.color;
-  const leather = "#493529";
-  const skin = "#c39a79";
-  const hair = "#35261f";
-
-  if (token.silhouette === "feminine") {
-    figure.ellipse(0, -10, 7.5, 11).fill(hair);
-    figure
-      .ellipse(-4.5, 10, 3.1, 6)
-      .fill(leather)
-      .ellipse(4.5, 10, 3.1, 6)
-      .fill(leather)
-      .ellipse(-7, -2, 3.2, 6)
-      .fill(outfit)
-      .ellipse(7, -2, 3.2, 6)
-      .fill(outfit)
-      .poly([-4, -8, 4, -8, 6, -3, 5, 2, 10, 11, 0, 16, -10, 11, -5, 2, -6, -3])
-      .fill(outfit)
-      .stroke({ color: "#e2c78d", width: 1.4, alpha: 0.9 })
-      .moveTo(-6, 2)
-      .lineTo(6, 2)
-      .stroke({ color: "#dbbd7f", width: 2, alpha: 0.9 })
-      .ellipse(-8, 4, 2.1, 2.7)
-      .fill(skin)
-      .ellipse(8, 4, 2.1, 2.7)
-      .fill(skin);
-  } else {
-    figure
-      .ellipse(-4, 10, 3.3, 6)
-      .fill(leather)
-      .ellipse(4, 10, 3.3, 6)
-      .fill(leather)
-      .ellipse(-8, -2, 3.5, 6)
-      .fill(outfit)
-      .ellipse(8, -2, 3.5, 6)
-      .fill(outfit)
-      .poly([-7, -9, -3, -12, 3, -12, 7, -9, 6, -3, 5, 5, 3, 10, -3, 10, -5, 5, -6, -3])
-      .fill(outfit)
-      .stroke({ color: "#e2c78d", width: 1.4, alpha: 0.9 })
-      .moveTo(-5, 2)
-      .lineTo(5, 2)
-      .stroke({ color: "#dbbd7f", width: 2, alpha: 0.9 })
-      .ellipse(-9, 4, 2.2, 2.7)
-      .fill(skin)
-      .ellipse(9, 4, 2.2, 2.7)
-      .fill(skin);
-  }
-
-  figure
-    .circle(0, -14, 5.4)
-    .fill(skin)
-    .stroke({ color: "#36271f", width: 1.2 })
-    .ellipse(0, -17.2, 5.1, 2.5)
-    .fill(hair)
-    .moveTo(-2.5, -4)
-    .lineTo(-1, -7)
-    .stroke({ color: "#fff1ca", width: 1.5, alpha: 0.52 });
-  return figure;
-}
+type CharacterView = {
+  node: Container;
+  miniature: Container;
+  shadow: Graphics;
+  signature: string;
+};
 
 export default function Board(props: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -127,7 +72,7 @@ export default function Board(props: Props) {
       const hoverEffects = new Graphics();
       const selectionEffects = new Graphics();
       const mapSprite = new Sprite(Texture.EMPTY);
-      const characterViews = new Map<string, Container>();
+      const characterViews = new Map<string, CharacterView>();
       mapSprite.visible = false;
       mapLayer.addChild(mapSprite);
       app.stage.addChild(world);
@@ -138,11 +83,15 @@ export default function Board(props: Props) {
       let miniatureScale = 1;
       let activeMapPath = "";
       let loadSequence = 0;
-      let drag: { id: string; view: Container } | null = null;
+      let drag: { id: string; view: Container; shadow: Graphics } | null = null;
       let pan: Point | null = null;
       let selectedId = "";
+      let hoveredId = "";
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const hoverTransitions = new Map<string, { from: number; value: number; target: number; elapsed: number }>();
       let releasing: {
         view: Container;
+        shadow: Graphics;
         id: string;
         from: Point;
         to: Point;
@@ -195,52 +144,54 @@ export default function Board(props: Props) {
 
       const drawCharacters = () => {
         if (drag || releasing || !mapWidth || !mapHeight) return;
-        characters.removeChildren().forEach((child) => child.destroy({ children: true }));
-        characterViews.clear();
+        const activeIds = new Set<string>();
         latest.current.tokens.forEach((token) => {
+          activeIds.add(token.id);
+          const selected = selectedId === token.id;
+          const signature = [
+            token.name,
+            token.color,
+            token.silhouette,
+            token.map_x,
+            token.map_y,
+            selected,
+          ].join("|");
+          const current = characterViews.get(token.id);
+          if (current?.signature === signature) {
+            current.node.position.set(token.map_x * mapWidth, token.map_y * mapHeight - (selected ? 1.5 : 0));
+            current.node.zIndex = selected ? 1 : 0;
+            return;
+          }
+          if (current) {
+            characters.removeChild(current.node);
+            current.node.destroy({ children: true });
+          }
           const node = new Container();
-          node.position.set(token.map_x * mapWidth, token.map_y * mapHeight);
-          node.zIndex = selectedId === token.id ? 1 : 0;
-          const baseRadius = 21 * miniatureScale;
-          const shadow = new Graphics()
-            .ellipse(2 * miniatureScale, 12 * miniatureScale, baseRadius * 1.12, baseRadius * 0.52)
-            .fill({ color: "#0b100c", alpha: 0.76 });
-          const base = new Graphics()
-            .circle(0, 4 * miniatureScale, baseRadius)
-            .fill("#32291f")
-            .stroke({ color: "#bd995b", width: 2.8 * miniatureScale })
-            .circle(0, 1 * miniatureScale, baseRadius * 0.82)
-            .fill("#716043")
-            .stroke({ color: "#e0c27e", width: 1.7 * miniatureScale })
-            .circle(0, -2 * miniatureScale, baseRadius * 0.63)
-            .fill("#464c3c")
-            .stroke({ color: "#f3dfaa", width: 1.1 * miniatureScale, alpha: 0.8 })
-            .ellipse(-5 * miniatureScale, -9 * miniatureScale, 7 * miniatureScale, 3 * miniatureScale)
-            .fill({ color: "#fff4ce", alpha: 0.42 });
-          const figure = createMiniature(token);
-          figure.scale.set(miniatureScale);
-          const label = new Text({
-            text: token.name,
-            style: {
-              fontFamily: "Georgia",
-              fontSize: 13 * miniatureScale,
-              fontWeight: "bold",
-              fill: "#fff0cf",
-              stroke: { color: "#1c241c", width: 4 * miniatureScale },
-            },
+          node.position.set(token.map_x * mapWidth, token.map_y * mapHeight - (selected ? 1.5 : 0));
+          node.zIndex = selected ? 1 : 0;
+          const miniature = createMiniature(token, {
+            scale: miniatureScale,
+            showName: true,
+            selected,
           });
-          label.anchor.set(0.5, 0);
-          label.y = 25 * miniatureScale;
-          node.addChild(shadow, base, figure, label);
-          characterViews.set(token.id, node);
+          const shadow = miniature.children[0] as Graphics;
+          node.addChild(miniature);
+          characterViews.set(token.id, { node, miniature, shadow, signature });
           characters.addChild(node);
         });
+        for (const [id, view] of characterViews) {
+          if (activeIds.has(id)) continue;
+          characters.removeChild(view.node);
+          view.node.destroy({ children: true });
+          characterViews.delete(id);
+        }
+        characters.sortChildren();
       };
       const drawSelectionAt = (x: number, y: number) => {
         selectionEffects.clear();
         if (!selectedId) return;
         selectionEffects
-          .circle(x, y + 1 * miniatureScale, 28 * miniatureScale)
+          .ellipse(x, y + 14 * miniatureScale, 26 * miniatureScale, 13 * miniatureScale)
           .stroke({ color: "#f1d188", width: 2.6 * miniatureScale, alpha: 0.92 });
       };
       const drawSelection = () => {
@@ -251,6 +202,37 @@ export default function Board(props: Props) {
         const token = latest.current.tokens.find((item) => item.id === selectedId);
         if (!token) return;
         drawSelectionAt(token.map_x * mapWidth, token.map_y * mapHeight);
+      };
+      const setHovered = (nextId: string) => {
+        if (nextId === hoveredId) return;
+        const previousId = hoveredId;
+        if (previousId) {
+          const previous = hoverTransitions.get(previousId);
+          const value = previous?.value ?? 1;
+          const oldToken = latest.current.tokens.find((token) => token.id === previousId);
+          const oldView = characterViews.get(previousId);
+          if (oldToken && oldView) {
+            if (reducedMotion) {
+              oldView.node.scale.set(1);
+              oldView.node.y = oldToken.map_y * mapHeight - (selectedId === previousId ? 1.5 : 0);
+              oldView.miniature.alpha = 0.94;
+            } else hoverTransitions.set(previousId, { from: value, value, target: 0, elapsed: 0 });
+          }
+        }
+        hoveredId = nextId;
+        if (!nextId) return;
+        const nextToken = latest.current.tokens.find((token) => token.id === nextId);
+        const nextView = characterViews.get(nextId);
+        if (!nextToken || !nextView) return;
+        if (reducedMotion) {
+          nextView.node.scale.set(1.045);
+          nextView.node.y = nextToken.map_y * mapHeight - (selectedId === nextId ? 1.5 : 0) - 3;
+          nextView.miniature.alpha = 1;
+        } else {
+          const previous = hoverTransitions.get(nextId);
+          const value = previous?.value ?? 0;
+          hoverTransitions.set(nextId, { from: value, value, target: 1, elapsed: 0 });
+        }
       };
       repaint.current = () => {
         drawCharacters();
@@ -350,8 +332,10 @@ export default function Board(props: Props) {
             return Math.hypot(position.x - x, position.y - y) < 29 * miniatureScale;
           });
         selectedId = token?.id ?? "";
-        setSelectedName(token?.name ?? "");
+        setHovered("");
         drawCharacters();
+        setHovered(token?.id ?? "");
+        setSelectedName(token?.name ?? "");
         drawSelection();
         if (token) {
           if (
@@ -360,9 +344,9 @@ export default function Board(props: Props) {
           ) return;
           const view = characterViews.get(token.id);
           if (!view) return;
-          drag = { id: token.id, view };
-          view.scale.set(1.08);
-          view.zIndex = 2;
+          drag = { id: token.id, view: view.node, shadow: view.shadow };
+          view.node.scale.set(1.08);
+          view.node.zIndex = 2;
         } else pan = point;
         app.canvas.style.cursor = "grabbing";
         app.canvas.setPointerCapture(event.pointerId);
@@ -378,18 +362,23 @@ export default function Board(props: Props) {
         const position = world.toLocal(point);
         const inside = position.x >= 0 && position.y >= 0 && position.x <= mapWidth && position.y <= mapHeight;
         drawHover(inside ? position : null);
+        if (!drag && !pan && inside) {
+          const hovered = [...latest.current.tokens]
+            .reverse()
+            .find((token) => Math.hypot(position.x - token.map_x * mapWidth, position.y - token.map_y * mapHeight) < 29 * miniatureScale);
+          setHovered(hovered?.id ?? "");
+        } else if (drag || pan || !inside) setHovered("");
         if (drag) {
           drag.view.position.set(position.x, position.y);
           drag.view.scale.set(1.08);
           drawSelectionAt(position.x, position.y);
-          const shadow = drag.view.children[0];
-          shadow.scale.set(1.3, 1.2);
-          shadow.alpha = 0.96;
+          drag.shadow.scale.set(1.3, 1.2);
+          drag.shadow.alpha = 0.96;
         }
       };
       const up = (event: PointerEvent) => {
         if (drag) {
-          const { id, view } = drag;
+          const { id, view, shadow } = drag;
           const position = world.toLocal(local(event));
           const snapped = mapPosition(
             position.x,
@@ -403,6 +392,7 @@ export default function Board(props: Props) {
           const nextY = snapped.y;
           releasing = {
             view,
+            shadow,
             id,
             from: { x: view.x, y: view.y },
             to: target,
@@ -420,6 +410,8 @@ export default function Board(props: Props) {
         drag = null;
         releasing = null;
         pan = null;
+        hoverTransitions.clear();
+        hoveredId = "";
         app.canvas.style.cursor = "grab";
         drawCharacters();
         drawSelection();
@@ -430,23 +422,44 @@ export default function Board(props: Props) {
         applyZoom(world.scale.x * Math.exp(-event.deltaY * 0.001), local(event));
       };
       const leave = () => {
-        if (!drag) drawHover(null);
+        if (!drag) {
+          drawHover(null);
+          setHovered("");
+        }
       };
       const ticker = (ticker: { deltaMS: number }) => {
         if (selectedId)
-          selectionEffects.alpha = 0.82 + Math.sin(performance.now() / 260) * 0.15;
+          selectionEffects.alpha = reducedMotion ? 0.92 : 0.82 + Math.sin(performance.now() / 260) * 0.15;
+        for (const [id, transition] of hoverTransitions) {
+          const view = characterViews.get(id);
+          const token = latest.current.tokens.find((item) => item.id === id);
+          if (!view || !token || drag?.id === id || releasing?.id === id) {
+            hoverTransitions.delete(id);
+            continue;
+          }
+          transition.elapsed = Math.min(80, transition.elapsed + ticker.deltaMS);
+          const amount = Math.min(1, transition.elapsed / 80);
+          const eased = amount * amount * (3 - 2 * amount);
+          transition.value = transition.from + (transition.target - transition.from) * eased;
+          view.node.scale.set(1 + 0.045 * transition.value);
+          view.node.y = token.map_y * mapHeight - (selectedId === id ? 1.5 : 0) - 3 * transition.value;
+          view.miniature.alpha = 0.94 + 0.06 * transition.value;
+          if (amount >= 1) {
+            transition.value = transition.target;
+            hoverTransitions.delete(id);
+          }
+        }
         if (releasing) {
-          releasing.elapsed = Math.min(150, releasing.elapsed + ticker.deltaMS);
-          const amount = releasing.elapsed / 150;
+          releasing.elapsed = Math.min(reducedMotion ? 1 : 150, releasing.elapsed + ticker.deltaMS);
+          const amount = releasing.elapsed / (reducedMotion ? 1 : 150);
           const eased = 1 - (1 - amount) ** 3;
           releasing.view.position.set(
             releasing.from.x + (releasing.to.x - releasing.from.x) * eased,
             releasing.from.y + (releasing.to.y - releasing.from.y) * eased,
           );
           releasing.view.scale.set(1.08 - 0.08 * eased);
-          const shadow = releasing.view.children[0];
-          shadow.scale.set(1.3 - 0.3 * eased, 1.2 - 0.2 * eased);
-          shadow.alpha = 0.96 - 0.2 * eased;
+          releasing.shadow.scale.set(1.3 - 0.3 * eased, 1.2 - 0.2 * eased);
+          releasing.shadow.alpha = 0.96 - 0.2 * eased;
           drawSelectionAt(releasing.view.x, releasing.view.y);
           if (amount >= 1) {
             const move = releasing;

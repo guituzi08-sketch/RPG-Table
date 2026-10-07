@@ -14,7 +14,7 @@ Implementação inicial: criar/entrar em sala com código, autenticação anôni
 - `src/game/Board.tsx`: desenho PixiJS, câmera e interação com tokens.
 - `src/lib/client.ts`: autenticação e cliente Supabase.
 - `src/lib/useRoom.ts`: assinatura Realtime, recuperação de snapshots e presença.
-- `database/001_initial.sql`, `database/002_character_appearance.sql` e `database/003_custom_maps.sql`: schema, RLS, Storage privado, mapas e aparência persistente das miniaturas.
+- `database/001_initial.sql` e migrations `002`–`004`: schema, RLS, Storage privado, mapas e aparência persistente das miniaturas.
 - `tests/security.test.js`: testes PostgreSQL de permissões e persistência usando PGlite.
 
 O banco é a fonte de verdade. Ao soltar um token, `move_token` verifica a permissão, salva a posição e o Realtime notifica os participantes. O arraste intermediário é local; a posição final é compartilhada. Na assinatura/reconexão, o cliente carrega novamente o estado salvo. Snapshots são serializados para evitar que respostas antigas sobrescrevam as novas. Em movimentos simultâneos autorizados, prevalece a última gravação.
@@ -31,7 +31,7 @@ Presença usa heartbeat no banco a cada 20 segundos e expira após 65 segundos; 
 4. Escolha a região disponível mais próxima do grupo e clique **Create new project**. Aguarde a criação.
 5. Abra **Authentication → Sign In / Providers** (em algumas versões, **Providers**). Abra **Anonymous Sign-Ins**, ative **Allow anonymous sign-ins** e salve. Não é necessário login Google nem SMTP para este MVP.
 6. Abra **SQL Editor → New query**. Copie TODO o conteúdo de [`database/001_initial.sql`](database/001_initial.sql), cole e clique **Run**. Execute uma vez em um projeto novo. Não execute em um banco existente sem revisar conflitos.
-7. No SQL Editor, execute [`database/002_character_appearance.sql`](database/002_character_appearance.sql) e [`database/003_custom_maps.sql`](database/003_custom_maps.sql), nessa ordem. A segunda mantém tokens e salas antigas, cria o bucket privado `maps`, configura políticas por sala/mestre e ativa atualizações Realtime de `rooms`. Em projeto já configurado, execute apenas as migrations ainda não aplicadas; nunca faça reset do banco.
+7. No SQL Editor, execute [`database/002_character_appearance.sql`](database/002_character_appearance.sql) e [`database/003_custom_maps.sql`](database/003_custom_maps.sql), nessa ordem. As migrations preservam tokens/salas antigas; `003` cria o bucket privado `maps` e políticas por sala/mestre. As variações visuais das miniaturas são derivadas dos dados existentes do personagem e não exigem migration própria. Em projeto já configurado, execute apenas as migrations ainda não aplicadas; nunca faça reset do banco.
 Os mapas aceitos são PNG, JPG/JPEG e WEBP, até 20 MB, 4096 px por lado e 16,7 MP. O navegador valida assinatura e decodifica a imagem antes do upload; Storage também limita MIME e tamanho.
 8. Em **Project Settings → API Keys**, copie a chave **Publishable** (`sb_publishable_...`). Se o projeto só oferecer chaves antigas, a chave pública `anon` também funciona. **Nunca use `service_role`, `sb_secret_...` ou senha do banco.**
 9. No diálogo **Connect** ou em **Project Settings → Data API**, copie **Project URL**, no formato `https://....supabase.co`.
